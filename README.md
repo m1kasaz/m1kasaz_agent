@@ -85,12 +85,62 @@
 
 ## 当前仓库状态
 
-当前仓库仍处于初始化阶段，代码主体尚未落地，但已经有一些环境与插件配置：
+当前仓库仍处于初始化阶段，代码主体尚未落地，但已经有一些环境与插件配置。
 
-- `ai-plugin.json`：AI 插件依赖声明
-- `.mcp.json`：MCP 服务配置
-  - `lark-docs`：飞书文档导出 / 导入
-  - `tika`：文档检索与问答能力
+### 配置体系说明
+
+当前仓库中的 Agent 相关配置，统一按两套体系理解和维护。
+
+#### 1. MCP 工具接入体系
+
+这套体系解决“Claude 能连接哪些外部工具服务”的问题。
+
+对应文件：
+
+- `.mcp.json`
+
+当前已接入：
+
+- `lark-docs`：飞书文档导出 / 导入
+- `tika`：文档检索与问答能力
+
+后续如果新增 MCP，统一按下面格式在 README 中补充：
+
+- `mcp-name`：一句话说明这个 MCP 提供什么能力
+
+#### 2. AI 插件依赖体系
+
+这套体系解决“项目依赖了哪些 AI 插件，以及实际锁定到哪些插件版本”的问题。
+
+对应文件：
+
+- `ai-plugin.json`：插件依赖声明
+- `ai-plugin-lock.json`：插件依赖锁定结果
+
+当前声明的插件包：
+
+- `ttadk/backend`
+
+当前锁定并展开的插件包括：
+
+- `ttadk/core`
+- `ttadk/gdp`
+- `ttadk/hertz`
+- `ttadk/kitex`
+- `ttadk/overpass`
+- `ttadk/backend-sdk`
+- `ttadk/backend-test`
+- `ttadk/common-test`
+- `ttadk/gdpa`
+- `ttadk/lark_cli`
+- `ttadk/bits-unit-test-gen`
+- `ttadk/tiktok-guidelines`
+
+后续如果新增插件，统一按下面格式在 README 中补充：
+
+- 声明插件包：`plugin-package-name`
+- 展开插件：`plugin-a`、`plugin-b`、`plugin-c`
+- 用途：一句话说明这组插件主要解决什么问题
 
 这意味着项目后续可以优先从以下方向开始接入：
 
@@ -100,20 +150,30 @@
 
 ## 建议的目录演进方向
 
+当前仓库按顶层 `backend / frontend` 分离维护：
+
+- `backend/`：Python + FastAPI + LangGraph 后端工程
+- `frontend/`：当前 Web 控制台静态资源
+- 当前 frontend 仍由 backend 提供静态文件服务，不是独立构建产物
+
 ```text
 m1kasaz_agent/
-├── main.py
-├── app/
-│   ├── api/
-│   ├── graph/
-│   ├── nodes/
-│   ├── subgraphs/
-│   ├── tools/
-│   ├── services/
-│   ├── scheduler/
-│   └── prompts/
+├── backend/
+│   ├── main.py
+│   ├── pyproject.toml
+│   ├── app/
+│   │   ├── api/
+│   │   ├── graph/
+│   │   ├── nodes/
+│   │   ├── subgraphs/
+│   │   ├── tools/
+│   │   ├── services/
+│   │   ├── scheduler/
+│   │   └── prompts/
+│   └── tests/
+├── frontend/
+│   └── static/
 ├── data/
-├── tests/
 └── docs/
 ```
 
@@ -129,10 +189,10 @@ m1kasaz_agent/
 
 随着代码逐步落地，README 可以继续补充：
 
-- 本地启动方式
+- 本地启动方式（默认进入 `backend/` 执行）
 - 环境变量说明
 - API / CLI 使用示例
-- 测试方式
+- 测试方式（默认进入 `backend/` 执行）
 - 项目目录说明
 - Roadmap 与里程碑
 

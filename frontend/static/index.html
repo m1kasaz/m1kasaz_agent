@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>m1kasaz agent</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="brand-mark">M</div>
+          <div>
+            <h1>m1kasaz agent</h1>
+            <p>Chat / Document / Paper</p>
+          </div>
+        </div>
+
+        <button id="newConversationBtn" class="new-chat-btn" type="button">新对话</button>
+
+        <nav class="mode-nav" aria-label="能力模式">
+          <button class="mode-btn active" data-mode="chat" type="button">
+            <span class="mode-btn-title">Chat</span>
+            <span class="mode-btn-desc">通用对话与模型调用</span>
+          </button>
+          <button class="mode-btn" data-mode="document" type="button">
+            <span class="mode-btn-title">Document</span>
+            <span class="mode-btn-desc">文档摘要与抽取</span>
+          </button>
+          <button class="mode-btn" data-mode="paper" type="button">
+            <span class="mode-btn-title">Paper</span>
+            <span class="mode-btn-desc">论文与应用推荐</span>
+          </button>
+        </nav>
+
+        <section class="sidebar-section">
+          <div class="section-label">当前模式</div>
+          <p id="modeDescription" class="sidebar-copy"></p>
+        </section>
+
+        <section class="sidebar-section recent-section">
+          <div class="section-label">最近输入</div>
+          <div id="recentList" class="recent-list"></div>
+        </section>
+
+        <section class="sidebar-section">
+          <div class="section-label">本地设置</div>
+          <button id="settingsBtn" class="ghost-btn settings-btn" type="button">模型配置</button>
+        </section>
+
+        <div class="sidebar-footer">
+          <button id="healthBtn" class="ghost-btn" type="button">刷新状态</button>
+          <span id="healthBadge" class="status-badge pending">检查中</span>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="conversation-header">
+          <div class="header-side">
+            <span id="headerModePill" class="header-pill">Chat</span>
+          </div>
+          <div class="conversation-heading">
+            <h2 id="pageTitle">新对话</h2>
+            <p id="pageSubtitle">m1kasaz agent 已就绪，开始你的第一个问题。</p>
+          </div>
+          <div class="header-side header-side-right">
+            <span id="headerStatusText" class="header-status">服务连接中</span>
+          </div>
+        </header>
+
+        <section class="conversation-canvas">
+          <section id="settingsPanel" class="settings-panel hidden" aria-label="模型设置">
+            <div class="settings-panel-header">
+              <div>
+                <h3>模型设置</h3>
+                <p>API Key 仅保存在当前机器的本地应用数据库中，不会回显原始值。</p>
+              </div>
+              <button id="settingsCloseBtn" class="ghost-btn" type="button">关闭</button>
+            </div>
+
+            <div class="settings-grid">
+              <article class="settings-card">
+                <div class="settings-card-header">
+                  <div>
+                    <h4>OpenAI</h4>
+                    <p>用于“快速”模式。</p>
+                  </div>
+                  <span id="openaiStatusBadge" class="status-badge pending">未检查</span>
+                </div>
+                <p id="openaiStatusText" class="settings-status-copy">尚未读取配置状态。</p>
+                <label class="field">
+                  <span>OPENAI_API_KEY</span>
+                  <input id="openaiApiKeyInput" type="password" placeholder="输入 OpenAI API Key" autocomplete="off" />
+                </label>
+                <div class="settings-actions">
+                  <button id="saveOpenaiBtn" class="send-btn settings-save-btn" type="button">保存</button>
+                  <button id="clearOpenaiBtn" class="ghost-btn" type="button">清空</button>
+                </div>
+              </article>
+
+              <article class="settings-card">
+                <div class="settings-card-header">
+                  <div>
+                    <h4>Anthropic</h4>
+                    <p>用于“思考”模式。</p>
+                  </div>
+                  <span id="anthropicStatusBadge" class="status-badge pending">未检查</span>
+                </div>
+                <p id="anthropicStatusText" class="settings-status-copy">尚未读取配置状态。</p>
+                <label class="field">
+                  <span>ANTHROPIC_API_KEY</span>
+                  <input id="anthropicApiKeyInput" type="password" placeholder="输入 Anthropic API Key" autocomplete="off" />
+                </label>
+                <div class="settings-actions">
+                  <button id="saveAnthropicBtn" class="send-btn settings-save-btn" type="button">保存</button>
+                  <button id="clearAnthropicBtn" class="ghost-btn" type="button">清空</button>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <div id="emptyState" class="empty-state">
+            <div class="empty-state-icon">◎</div>
+            <h3 id="emptyTitle">今天想聊点什么？</h3>
+            <p id="emptyHint">你可以直接提问，也可以使用下方推荐卡片快速开始。</p>
+            <div id="suggestionList" class="suggestion-list"></div>
+          </div>
+
+          <div id="conversationList" class="conversation-list hidden"></div>
+        </section>
+
+        <div class="composer-area">
+          <div id="errorBox" class="error-box hidden"></div>
+
+          <div class="composer-shell">
+            <textarea
+              id="promptInput"
+              class="prompt-input"
+              rows="1"
+              placeholder="给 m1kasaz agent 发消息"
+            ></textarea>
+
+            <div class="composer-toolbar">
+              <div class="composer-mode-controls">
+                <div id="chatControls" class="mode-controls">
+                  <div class="chat-preset-switch" role="tablist" aria-label="选择聊天模式">
+                    <button class="chat-preset-pill active" data-chat-preset="quick" type="button">快速</button>
+                    <button class="chat-preset-pill" data-chat-preset="think" type="button">思考</button>
+                  </div>
+                  <span id="chatPresetDescription" class="mode-tip">适用于大部分情况</span>
+                </div>
+
+                <div id="documentControls" class="mode-controls hidden">
+                  <label class="inline-field">
+                    <span>操作</span>
+                    <select id="documentAction">
+                      <option value="summarize">summarize</option>
+                      <option value="extract">extract</option>
+                    </select>
+                  </label>
+                  <span class="mode-tip">输入文档文件名或路径，例如 report.pdf</span>
+                </div>
+
+                <div id="paperControls" class="mode-controls hidden">
+                  <span class="mode-tip">快速主题</span>
+                  <div class="chip-row">
+                    <button class="chip-btn" data-topic="agents" type="button">agents</button>
+                    <button class="chip-btn" data-topic="rag" type="button">rag</button>
+                    <button class="chip-btn" data-topic="multimodal" type="button">multimodal</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="composer-actions">
+                <span id="loadingText" class="loading-text"></span>
+                <button id="sendBtn" class="send-btn" type="button">发送</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
