@@ -1,43 +1,13 @@
-const modeConfigs = {
-  chat: {
-    label: 'Chat',
-    description: '通用对话模式，适合直接提问。',
-    subtitle: 'm1kasaz agent 已就绪，开始你的第一个问题。',
-    emptyTitle: '今天想聊点什么？',
-    emptyHint: '你可以直接提问，也可以使用下方推荐卡片快速开始。',
-    placeholder: '给 m1kasaz agent 发消息',
-    suggestions: [
-      { title: '总结一段技术方案', prompt: '帮我总结一下这个 Agent 项目的 MVP 范围', hint: '快速进入普通问答' },
-      { title: '解释一段代码', prompt: '请解释一下 LangGraph 主图的作用', hint: '适合代码理解与说明' },
-      { title: '生成待办清单', prompt: '请帮我拆解下一阶段开发任务', hint: '适合规划与拆解' },
-    ],
-  },
-  document: {
-    label: 'Document',
-    description: '文档模式，当前支持基于文件名或路径的摘要与抽取请求。',
-    subtitle: '输入文件名或路径，快速构造文档处理请求。',
-    emptyTitle: '想处理哪份文档？',
-    emptyHint: '当前不支持上传文件，可直接输入 report.pdf 或 note.docx 这类路径。',
-    placeholder: '输入文档文件名或路径，例如 report.pdf',
-    suggestions: [
-      { title: '摘要 PDF', prompt: 'report.pdf', hint: 'summarize this document report.pdf' },
-      { title: '抽取 DOCX', prompt: 'meeting-notes.docx', hint: 'extract this document meeting-notes.docx' },
-      { title: '检查说明书', prompt: 'requirements.docx', hint: '适合做快速抽取或摘要' },
-    ],
-  },
-  paper: {
-    label: 'Paper',
-    description: '推荐模式，支持论文与 AI 应用推荐，并返回可点击链接。',
-    subtitle: '输入主题关键词，快速获取高引用论文或高 stars 应用推荐。',
-    emptyTitle: '今天想看哪类推荐？',
-    emptyHint: '可以输入 agents、rag、multimodal，也可以直接描述 application / tool / product 需求。',
-    placeholder: '输入推荐主题，例如 agents 或 writing tool',
-    suggestions: [
-      { title: 'Agents', prompt: 'agents', hint: '推荐一篇关于 AI agents 的论文' },
-      { title: 'RAG', prompt: 'rag', hint: '推荐一篇关于 retrieval 的论文' },
-      { title: 'Multimodal', prompt: 'multimodal', hint: '推荐一篇关于多模态的论文' },
-    ],
-  },
+const assistantConfig = {
+  subtitle: '直接描述你的需求，系统会自动完成问答、检索或文档处理。',
+  emptyTitle: '今天想完成什么？',
+  emptyHint: '支持普通问答、论文/应用检索，以及上传 PDF / DOCX 后做抽取、总结、问答或转换。',
+  placeholder: '请输入问题',
+  suggestions: [
+    { title: '推荐论文', prompt: '推荐一篇关于 agents 的经典论文', hint: '自动触发论文检索' },
+    { title: '推荐应用', prompt: '推荐一个 AI 写作工具', hint: '自动触发应用检索' },
+    { title: '文档处理', prompt: '总结这个文档', hint: '可先上传 PDF / DOCX，再让系统自动识别动作' },
+  ],
 };
 
 const chatModelPresets = {
@@ -62,16 +32,17 @@ const chatModelPresets = {
 };
 
 const state = {
-  mode: 'chat',
   loading: false,
   messages: [],
   recentPrompts: [],
   chatPreset: 'quick',
   settingsOpen: false,
   settingsLoading: false,
+  selectedFile: null,
   providerSettings: {
     openai: null,
     anthropic: null,
+    openai_compatible: null,
   },
 };
 
@@ -79,10 +50,6 @@ const elements = {
   healthBadge: document.getElementById('healthBadge'),
   healthBtn: document.getElementById('healthBtn'),
   headerStatusText: document.getElementById('headerStatusText'),
-  headerModePill: document.getElementById('headerModePill'),
-  pageTitle: document.getElementById('pageTitle'),
-  pageSubtitle: document.getElementById('pageSubtitle'),
-  modeDescription: document.getElementById('modeDescription'),
   emptyState: document.getElementById('emptyState'),
   emptyTitle: document.getElementById('emptyTitle'),
   emptyHint: document.getElementById('emptyHint'),
@@ -90,6 +57,11 @@ const elements = {
   conversationList: document.getElementById('conversationList'),
   recentList: document.getElementById('recentList'),
   promptInput: document.getElementById('promptInput'),
+  documentFileInput: document.getElementById('documentFileInput'),
+  documentFileTrigger: document.getElementById('documentFileTrigger'),
+  selectedFileBadge: document.getElementById('selectedFileBadge'),
+  selectedFileName: document.getElementById('selectedFileName'),
+  clearSelectedFileBtn: document.getElementById('clearSelectedFileBtn'),
   loadingText: document.getElementById('loadingText'),
   errorBox: document.getElementById('errorBox'),
   settingsPanel: document.getElementById('settingsPanel'),
@@ -97,22 +69,23 @@ const elements = {
   settingsCloseBtn: document.getElementById('settingsCloseBtn'),
   openaiStatusBadge: document.getElementById('openaiStatusBadge'),
   anthropicStatusBadge: document.getElementById('anthropicStatusBadge'),
+  compatibleStatusBadge: document.getElementById('compatibleStatusBadge'),
   openaiStatusText: document.getElementById('openaiStatusText'),
   anthropicStatusText: document.getElementById('anthropicStatusText'),
+  compatibleStatusText: document.getElementById('compatibleStatusText'),
   openaiApiKeyInput: document.getElementById('openaiApiKeyInput'),
   anthropicApiKeyInput: document.getElementById('anthropicApiKeyInput'),
+  compatibleBaseUrlInput: document.getElementById('compatibleBaseUrlInput'),
+  compatibleApiKeyInput: document.getElementById('compatibleApiKeyInput'),
   saveOpenaiBtn: document.getElementById('saveOpenaiBtn'),
   saveAnthropicBtn: document.getElementById('saveAnthropicBtn'),
+  saveCompatibleBtn: document.getElementById('saveCompatibleBtn'),
   clearOpenaiBtn: document.getElementById('clearOpenaiBtn'),
   clearAnthropicBtn: document.getElementById('clearAnthropicBtn'),
+  clearCompatibleBtn: document.getElementById('clearCompatibleBtn'),
   sendBtn: document.getElementById('sendBtn'),
   newConversationBtn: document.getElementById('newConversationBtn'),
-  tabs: Array.from(document.querySelectorAll('.mode-btn')),
-  documentAction: document.getElementById('documentAction'),
   chatControls: document.getElementById('chatControls'),
-  documentControls: document.getElementById('documentControls'),
-  paperControls: document.getElementById('paperControls'),
-  chipButtons: Array.from(document.querySelectorAll('.chip-btn')),
   chatPresetDescription: document.getElementById('chatPresetDescription'),
   chatPresetOptions: Array.from(document.querySelectorAll('.chat-preset-pill')),
 };
@@ -134,27 +107,10 @@ function syncChatPresetUI() {
   });
 }
 
-function setMode(mode) {
-  state.mode = mode;
-  state.settingsOpen = false;
-  const config = modeConfigs[mode];
-
-  document.body.dataset.mode = mode;
-  elements.tabs.forEach((button) => {
-    button.classList.toggle('active', button.dataset.mode === mode);
-  });
-
-  elements.headerModePill.textContent = config.label;
-  elements.pageTitle.textContent = '新对话';
-  elements.pageSubtitle.textContent = config.subtitle;
-  elements.modeDescription.textContent = config.description;
-  elements.emptyTitle.textContent = config.emptyTitle;
-  elements.emptyHint.textContent = config.emptyHint;
-  elements.promptInput.placeholder = config.placeholder;
-
-  elements.chatControls.classList.toggle('hidden', mode !== 'chat');
-  elements.documentControls.classList.toggle('hidden', mode !== 'document');
-  elements.paperControls.classList.toggle('hidden', mode !== 'paper');
+function syncAssistantShell() {
+  elements.emptyTitle.textContent = assistantConfig.emptyTitle;
+  elements.emptyHint.textContent = assistantConfig.emptyHint;
+  elements.promptInput.placeholder = assistantConfig.placeholder;
   syncSettingsPanel();
   syncChatPresetUI();
   renderSuggestions();
@@ -163,10 +119,9 @@ function setMode(mode) {
 }
 
 function renderSuggestions() {
-  const config = modeConfigs[state.mode];
   elements.suggestionList.replaceChildren();
 
-  config.suggestions.forEach((item) => {
+  assistantConfig.suggestions.forEach((item) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'suggestion-btn';
@@ -203,14 +158,13 @@ function renderRecentPrompts() {
     button.type = 'button';
     button.className = 'recent-btn';
 
-    const mode = document.createElement('strong');
-    mode.textContent = item.modeLabel;
+    const title = document.createElement('strong');
+    title.textContent = '最近输入';
     const text = document.createElement('span');
     text.textContent = item.prompt;
 
-    button.append(mode, text);
+    button.append(title, text);
     button.addEventListener('click', () => {
-      setMode(item.mode);
       elements.promptInput.value = item.prompt;
       autoResizePrompt();
       elements.promptInput.focus();
@@ -249,12 +203,6 @@ function renderConversation() {
     role.textContent = message.role === 'user' ? '你' : message.role === 'assistant' ? 'm1kasaz agent' : '提示';
     metaRow.append(role);
 
-    if (message.modeLabel) {
-      const mode = document.createElement('span');
-      mode.textContent = message.modeLabel;
-      metaRow.append(mode);
-    }
-
     if (message.presetLabel) {
       const preset = document.createElement('span');
       preset.className = 'message-preset-pill';
@@ -262,9 +210,7 @@ function renderConversation() {
       metaRow.append(preset);
     }
 
-    const content = document.createElement('p');
-    content.className = 'message-content';
-    content.textContent = message.content;
+    const content = renderMessageContent(message);
 
     card.append(metaRow, content);
 
@@ -281,6 +227,79 @@ function renderConversation() {
 
   elements.conversationList.replaceChildren(fragment);
   elements.conversationList.lastElementChild?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function renderMessageContent(message) {
+  const text = String(message.content || '');
+  if (message.role === 'user' || message.loading) {
+    const content = document.createElement('p');
+    content.className = 'message-content';
+    content.textContent = text;
+    return content;
+  }
+
+  const blocks = splitMessageBlocks(text);
+  if (blocks.length <= 1) {
+    const content = document.createElement('p');
+    content.className = 'message-content';
+    content.textContent = text;
+    return content;
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'message-content-stack';
+  blocks.forEach((block) => {
+    const paragraph = document.createElement('p');
+    paragraph.className = 'message-content message-paragraph';
+    paragraph.textContent = block;
+    wrapper.append(paragraph);
+  });
+  return wrapper;
+}
+
+function splitMessageBlocks(text) {
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return [''];
+  }
+
+  const paragraphs = normalized
+    .split(/\n{2,}/)
+    .flatMap((paragraph) => splitLongParagraph(paragraph))
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  return paragraphs.length ? paragraphs : [normalized];
+}
+
+function splitLongParagraph(paragraph) {
+  const cleaned = paragraph.trim();
+  if (!cleaned) {
+    return [];
+  }
+  if (cleaned.length <= 120) {
+    return [cleaned];
+  }
+
+  const sentences = cleaned.match(/[^。！？!?；;]+[。！？!?；;]?/g) || [cleaned];
+  const chunks = [];
+  let current = '';
+
+  sentences.forEach((sentence) => {
+    const next = `${current}${sentence}`.trim();
+    if (current && next.length > 120) {
+      chunks.push(current.trim());
+      current = sentence;
+      return;
+    }
+    current = `${current}${sentence}`;
+  });
+
+  if (current.trim()) {
+    chunks.push(current.trim());
+  }
+
+  return chunks.length ? chunks : [cleaned];
 }
 
 function renderArtifacts(artifacts) {
@@ -314,14 +333,36 @@ function renderDocumentArtifact(documentArtifact, links) {
   title.textContent = `文档${documentArtifact.action || '处理'}结果`;
   card.append(title);
 
-  if (documentArtifact.output) {
-    const meta = document.createElement('div');
-    meta.className = 'artifact-meta';
-    meta.append(
-      createMetaChip(documentArtifact.output.mime_type || 'unknown'),
-      createMetaChip(`${documentArtifact.output.size_bytes || 0} bytes`),
-    );
+  const meta = document.createElement('div');
+  meta.className = 'artifact-meta';
+  if (documentArtifact.source?.type) meta.append(createMetaChip(documentArtifact.source.type));
+  if (documentArtifact.source?.origin === 'uploaded') meta.append(createMetaChip('uploaded'));
+  if (documentArtifact.source?.name) meta.append(createMetaChip(documentArtifact.source.name));
+  if (documentArtifact.output?.mime_type) meta.append(createMetaChip(documentArtifact.output.mime_type));
+  if (documentArtifact.output?.size_bytes) meta.append(createMetaChip(`${documentArtifact.output.size_bytes} bytes`));
+  if (meta.childElementCount) {
     card.append(meta);
+  }
+
+  if (documentArtifact.summary) {
+    const summary = document.createElement('p');
+    summary.className = 'artifact-summary';
+    summary.textContent = documentArtifact.summary;
+    card.append(summary);
+  }
+
+  if (documentArtifact.answer) {
+    const answer = document.createElement('p');
+    answer.className = 'artifact-summary';
+    answer.textContent = documentArtifact.answer;
+    card.append(answer);
+  }
+
+  if (documentArtifact.text_preview) {
+    const preview = document.createElement('p');
+    preview.className = 'artifact-preview';
+    preview.textContent = documentArtifact.text_preview;
+    card.append(preview);
   }
 
   const linkRow = renderLinkRow(links);
@@ -409,8 +450,6 @@ function setLoading(loading) {
     elements.healthBtn,
     elements.newConversationBtn,
     ...elements.chatPresetOptions,
-    ...elements.tabs,
-    ...elements.chipButtons,
   ].forEach((element) => {
     if (element) {
       element.disabled = loading;
@@ -469,10 +508,19 @@ function syncSettingsPanel() {
   elements.conversationList.classList.toggle('hidden', state.settingsOpen || !state.messages.length);
 }
 
+function getProviderElements(provider) {
+  if (provider === 'openai') {
+    return { badge: elements.openaiStatusBadge, text: elements.openaiStatusText };
+  }
+  if (provider === 'anthropic') {
+    return { badge: elements.anthropicStatusBadge, text: elements.anthropicStatusText };
+  }
+  return { badge: elements.compatibleStatusBadge, text: elements.compatibleStatusText };
+}
+
 function renderProviderStatus(provider) {
   const config = state.providerSettings[provider];
-  const badge = provider === 'openai' ? elements.openaiStatusBadge : elements.anthropicStatusBadge;
-  const text = provider === 'openai' ? elements.openaiStatusText : elements.anthropicStatusText;
+  const { badge, text } = getProviderElements(provider);
   const defaultLabel = state.settingsLoading ? '读取中' : '未配置';
 
   if (!config) {
@@ -485,18 +533,34 @@ function renderProviderStatus(provider) {
   badge.textContent = config.configured ? '已配置' : '未配置';
   badge.className = `status-badge ${config.configured ? 'ok' : 'error'}`;
 
+  const sourceLabel = config.source === 'stored' ? '本地设置' : config.source === 'env' ? '环境变量' : '未配置';
+  const baseUrlSourceLabel = config.base_url_source === 'stored' ? '本地设置' : config.base_url_source === 'env' ? '环境变量' : '未配置';
+
+  if (provider === 'openai_compatible') {
+    if (!config.configured && !config.base_url) {
+      text.textContent = '当前未配置 Base URL 和 API Key。';
+      return;
+    }
+
+    const parts = [];
+    parts.push(config.base_url ? `Base URL：${config.base_url}（${baseUrlSourceLabel}）` : 'Base URL：未配置');
+    parts.push(config.configured ? `API Key 来源：${sourceLabel}${config.masked_api_key ? ` · ${config.masked_api_key}` : ''}` : 'API Key：未配置');
+    text.textContent = parts.join('；');
+    return;
+  }
+
   if (!config.configured) {
     text.textContent = '当前未配置 API Key。';
     return;
   }
 
-  const sourceLabel = config.source === 'stored' ? '本地设置' : config.source === 'env' ? '环境变量' : '未配置';
   text.textContent = `来源：${sourceLabel}${config.masked_api_key ? ` · ${config.masked_api_key}` : ''}`;
 }
 
 function renderSettingsStatus() {
   renderProviderStatus('openai');
   renderProviderStatus('anthropic');
+  renderProviderStatus('openai_compatible');
   syncChatPresetUI();
 }
 
@@ -507,8 +571,10 @@ function setSettingsLoading(loading) {
     elements.settingsCloseBtn,
     elements.saveOpenaiBtn,
     elements.saveAnthropicBtn,
+    elements.saveCompatibleBtn,
     elements.clearOpenaiBtn,
     elements.clearAnthropicBtn,
+    elements.clearCompatibleBtn,
   ].forEach((element) => {
     if (element) {
       element.disabled = loading;
@@ -524,6 +590,7 @@ async function loadSettings() {
     state.providerSettings = {
       openai: data.providers.find((item) => item.provider === 'openai') || null,
       anthropic: data.providers.find((item) => item.provider === 'anthropic') || null,
+      openai_compatible: data.providers.find((item) => item.provider === 'openai_compatible') || null,
     };
     renderSettingsStatus();
   } finally {
@@ -536,9 +603,6 @@ function openSettingsPanel() {
   state.settingsOpen = true;
   syncSettingsPanel();
   clearError();
-  elements.pageTitle.textContent = '模型配置';
-  elements.pageSubtitle.textContent = '在当前机器上保存 OpenAI / Anthropic API Key。';
-  elements.headerModePill.textContent = 'Settings';
   requestAnimationFrame(() => {
     elements.settingsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
@@ -547,13 +611,10 @@ function openSettingsPanel() {
 function closeSettingsPanel() {
   state.settingsOpen = false;
   syncSettingsPanel();
-  const config = modeConfigs[state.mode];
-  elements.headerModePill.textContent = config.label;
-  elements.pageTitle.textContent = '新对话';
-  elements.pageSubtitle.textContent = config.subtitle;
+  syncAssistantShell();
 }
 
-async function saveProviderKey(provider, inputElement) {
+async function saveProviderKey(provider, inputElement, extraPayload = {}) {
   const apiKey = inputElement.value.trim();
   if (!apiKey) {
     throw new Error('请先输入 API Key。');
@@ -563,7 +624,7 @@ async function saveProviderKey(provider, inputElement) {
     await requestJson(`/settings/model/${provider}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: apiKey, clear_api_key: false }),
+      body: JSON.stringify({ api_key: apiKey, clear_api_key: false, ...extraPayload }),
     });
     inputElement.value = '';
     await loadSettings();
@@ -572,13 +633,13 @@ async function saveProviderKey(provider, inputElement) {
   }
 }
 
-async function clearProviderKey(provider, inputElement) {
+async function clearProviderKey(provider, inputElement, extraPayload = {}) {
   setSettingsLoading(true);
   try {
     await requestJson(`/settings/model/${provider}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clear_api_key: true }),
+      body: JSON.stringify({ clear_api_key: true, ...extraPayload }),
     });
     inputElement.value = '';
     await loadSettings();
@@ -587,80 +648,53 @@ async function clearProviderKey(provider, inputElement) {
   }
 }
 
-function pushRecentPrompt(mode, prompt) {
+function pushRecentPrompt(prompt) {
   const trimmed = prompt.trim();
   if (!trimmed) {
     return;
   }
 
   state.recentPrompts = [
-    { mode, modeLabel: modeConfigs[mode].label, prompt: trimmed },
-    ...state.recentPrompts.filter((item) => !(item.mode === mode && item.prompt === trimmed)),
+    { prompt: trimmed },
+    ...state.recentPrompts.filter((item) => item.prompt !== trimmed),
   ].slice(0, 8);
 
   renderRecentPrompts();
 }
 
-function buildChatSubmission() {
+function buildSubmission() {
+  const userInput = elements.promptInput.value.trim();
+  if (!userInput && !state.selectedFile) {
+    throw new Error('请先输入内容或选择文档。');
+  }
+
   const preset = getActiveChatPreset();
-  const payload = {
-    intent: 'chat',
-    user_input: elements.promptInput.value.trim(),
-    model: { ...preset.payload },
-  };
+  if (state.selectedFile) {
+    const formData = new FormData();
+    formData.set('user_input', userInput);
+    formData.set('model', JSON.stringify({ ...preset.payload }));
+    formData.set('file', state.selectedFile);
+    return {
+      url: '/invoke/upload',
+      options: { method: 'POST', body: formData },
+      userText: userInput || `处理文档：${state.selectedFile.name}`,
+      presetLabel: preset.label,
+    };
+  }
 
   return {
-    payload,
-    userText: payload.user_input,
+    url: '/invoke',
+    options: {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_input: userInput,
+        model: { ...preset.payload },
+      }),
+    },
+    userText: userInput,
     presetLabel: preset.label,
   };
-}
-
-function buildDocumentSubmission() {
-  const raw = elements.promptInput.value.trim();
-  return {
-    payload: {
-      intent: 'document',
-      user_input: `${elements.documentAction.value} this document ${raw}`,
-    },
-    userText: `[${elements.documentAction.value}] ${raw}`,
-    presetLabel: null,
-  };
-}
-
-function buildPaperSubmission() {
-  const topic = elements.promptInput.value.trim() || 'agents';
-  return {
-    payload: {
-      intent: 'paper',
-      user_input: `recommend one AI paper about ${topic}`,
-    },
-    userText: `推荐一篇关于 ${topic} 的 AI 论文`,
-    presetLabel: null,
-  };
-}
-
-function validateSubmission(payload) {
-  if (state.mode === 'chat') {
-    if (!payload.user_input) {
-      throw new Error('请先输入聊天内容。');
-    }
-    return;
-  }
-
-  if (!elements.promptInput.value.trim()) {
-    throw new Error(state.mode === 'document' ? '请先填写文档文件名或路径。' : '请先输入论文主题。');
-  }
-}
-
-function buildSubmission() {
-  if (state.mode === 'document') {
-    return buildDocumentSubmission();
-  }
-  if (state.mode === 'paper') {
-    return buildPaperSubmission();
-  }
-  return buildChatSubmission();
 }
 
 async function quickSubmitWithCurrentInput() {
@@ -674,20 +708,17 @@ async function submitCurrentPrompt() {
   clearError();
 
   try {
-    const { payload, userText, presetLabel } = buildSubmission();
-    validateSubmission(payload);
-    pushRecentPrompt(state.mode, elements.promptInput.value.trim() || userText);
+    const { url, options, userText, presetLabel } = buildSubmission();
+    pushRecentPrompt(userText);
 
     state.messages.push({
       role: 'user',
-      modeLabel: modeConfigs[state.mode].label,
       content: userText,
       presetLabel,
     });
 
     const loadingIndex = state.messages.push({
       role: 'assistant',
-      modeLabel: modeConfigs[state.mode].label,
       content: '正在思考，请稍候...',
       loading: true,
       presetLabel,
@@ -697,21 +728,19 @@ async function submitCurrentPrompt() {
     setLoading(true);
     syncChatPresetUI();
 
-    const data = await requestJson('/invoke', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const data = await requestJson(url, options);
 
     state.messages[loadingIndex] = {
       role: 'assistant',
-      modeLabel: modeConfigs[state.mode].label,
       content: data.response || '',
       presetLabel,
       artifacts: data.artifacts || null,
     };
 
     elements.promptInput.value = '';
+    elements.documentFileInput.value = '';
+    state.selectedFile = null;
+    syncSelectedFileUI();
     autoResizePrompt();
     renderConversation();
   } catch (error) {
@@ -720,7 +749,6 @@ async function submitCurrentPrompt() {
     if (state.messages.length && state.messages[state.messages.length - 1].loading) {
       state.messages[state.messages.length - 1] = {
         role: 'system',
-        modeLabel: modeConfigs[state.mode].label,
         content: error.message,
       };
       renderConversation();
@@ -732,11 +760,36 @@ async function submitCurrentPrompt() {
 
 function resetConversation() {
   state.messages = [];
+  state.selectedFile = null;
   elements.promptInput.value = '';
+  elements.documentFileInput.value = '';
+  syncSelectedFileUI();
   clearError();
   autoResizePrompt();
   renderConversation();
   elements.promptInput.focus();
+}
+
+function syncSelectedFileUI() {
+  const file = state.selectedFile;
+  const hasFile = Boolean(file);
+  elements.selectedFileBadge.classList.toggle('hidden', !hasFile);
+  elements.selectedFileName.textContent = hasFile ? file.name : '';
+  elements.documentFileTrigger.classList.toggle('active', hasFile);
+}
+
+function handleSelectedFile(file) {
+  if (!file) {
+    state.selectedFile = null;
+    syncSelectedFileUI();
+    return;
+  }
+  const lowerName = file.name.toLowerCase();
+  if (!lowerName.endsWith('.pdf') && !lowerName.endsWith('.docx')) {
+    throw new Error('仅支持上传 .pdf 或 .docx 文件。');
+  }
+  state.selectedFile = file;
+  syncSelectedFileUI();
 }
 
 function handleChatPresetSelection(presetKey) {
@@ -749,10 +802,6 @@ function handleChatPresetSelection(presetKey) {
 }
 
 function bindEvents() {
-  elements.tabs.forEach((button) => {
-    button.addEventListener('click', () => setMode(button.dataset.mode));
-  });
-
   elements.healthBtn.addEventListener('click', async () => {
     clearError();
     await checkHealth();
@@ -784,6 +833,23 @@ function bindEvents() {
     }
   });
 
+  elements.saveCompatibleBtn.addEventListener('click', async () => {
+    clearError();
+    try {
+      const baseUrl = elements.compatibleBaseUrlInput.value.trim();
+      if (!baseUrl) {
+        throw new Error('请先输入兼容服务 Base URL。');
+      }
+      await saveProviderKey('openai_compatible', elements.compatibleApiKeyInput, {
+        base_url: baseUrl,
+        clear_base_url: false,
+      });
+      elements.compatibleBaseUrlInput.value = '';
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+
   elements.clearOpenaiBtn.addEventListener('click', async () => {
     clearError();
     try {
@@ -802,7 +868,37 @@ function bindEvents() {
     }
   });
 
+  elements.clearCompatibleBtn.addEventListener('click', async () => {
+    clearError();
+    try {
+      await clearProviderKey('openai_compatible', elements.compatibleApiKeyInput, { clear_base_url: true });
+      elements.compatibleBaseUrlInput.value = '';
+    } catch (error) {
+      showError(error.message);
+    }
+  });
+
   elements.newConversationBtn.addEventListener('click', resetConversation);
+
+  elements.documentFileTrigger.addEventListener('click', () => {
+    elements.documentFileInput.click();
+  });
+
+  elements.documentFileInput.addEventListener('change', () => {
+    clearError();
+    try {
+      handleSelectedFile(elements.documentFileInput.files?.[0] || null);
+    } catch (error) {
+      elements.documentFileInput.value = '';
+      showError(error.message);
+    }
+  });
+
+  elements.clearSelectedFileBtn.addEventListener('click', () => {
+    state.selectedFile = null;
+    elements.documentFileInput.value = '';
+    syncSelectedFileUI();
+  });
 
   elements.promptInput.addEventListener('input', autoResizePrompt);
   elements.promptInput.addEventListener('keydown', (event) => {
@@ -821,23 +917,14 @@ function bindEvents() {
       handleChatPresetSelection(button.dataset.chatPreset);
     });
   });
-
-  elements.chipButtons.forEach((button) => {
-    button.addEventListener('click', async () => {
-      elements.promptInput.value = button.dataset.topic || '';
-      autoResizePrompt();
-      elements.promptInput.focus();
-      await quickSubmitWithCurrentInput();
-    });
-  });
 }
 
 async function init() {
-  setMode('chat');
-  syncChatPresetUI();
+  syncAssistantShell();
   renderRecentPrompts();
   renderConversation();
   bindEvents();
+  syncSelectedFileUI();
   autoResizePrompt();
   await Promise.all([checkHealth(), loadSettings()]);
 }

@@ -1,5 +1,7 @@
+import io
 from zipfile import ZipFile
 
+import certifi
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
@@ -21,6 +23,16 @@ def build_docx(path) -> None:
             "word/document.xml",
             "<?xml version='1.0' encoding='UTF-8' standalone='yes'?><w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body><w:p><w:r><w:t>Hello world from api docx.</w:t></w:r></w:p></w:body></w:document>",
         )
+
+
+def build_docx_bytes(text: str = "Hello world from uploaded api docx.") -> bytes:
+    buffer = io.BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "word/document.xml",
+            f"<?xml version='1.0' encoding='UTF-8' standalone='yes'?><w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:body></w:document>",
+        )
+    return buffer.getvalue()
 
 
 def test_index_page() -> None:
@@ -45,7 +57,7 @@ def test_static_assets() -> None:
 def test_invoke_document_route(tmp_path) -> None:
     docx_path = tmp_path / "report.docx"
     build_docx(docx_path)
-    response = client.post("/invoke", json={"user_input": f"extract this document {docx_path}"})
+    response = client.post("/invoke", json={"user_input": f"提取这个文档 {docx_path}"})
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "document"
@@ -69,6 +81,76 @@ def test_invoke_document_route_with_explicit_intent() -> None:
     body = response.json()
     assert body["intent"] == "document"
     assert body["artifacts"]["document"]["metadata"]["status"] == "error"
+
+
+def test_invoke_upload_extracts_docx(monkeypatch) -> None:
+    response = client.post(
+        "/invoke/upload",
+        data={"user_input": "提取这个文档"},
+        files={
+            "file": (
+                "report.docx",
+                build_docx_bytes(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "document"
+    assert body["artifacts"]["document"]["source"]["origin"] == "uploaded"
+    assert body["artifacts"]["document"]["source"]["name"] == "report.docx"
+    assert body["artifacts"]["document"]["output"]["download_url"].startswith("/artifacts/download/")
+
+
+def test_invoke_upload_converts_docx_to_pdf(monkeypatch, tmp_path) -> None:
+    output_pdf = tmp_path / "converted.pdf"
+    output_pdf.write_bytes(b"%PDF-1.4 fake pdf")
+
+    def fake_convert(source_path, target_path):
+        target_path.write_bytes(output_pdf.read_bytes())
+        return {"converter": "fake"}
+
+    monkeypatch.setattr("app.services.document_service.convert_docx_to_pdf", fake_convert)
+    response = client.post(
+        "/invoke/upload",
+        data={"user_input": "把这个文档转成 PDF"},
+        files={
+            "file": (
+                "report.docx",
+                build_docx_bytes(),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["artifacts"]["document"]["action"] == "convert"
+    assert body["artifacts"]["document"]["output"]["mime_type"] == "application/pdf"
+
+
+def test_invoke_upload_summarizes_pdf(monkeypatch, tmp_path) -> None:
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 fake")
+    monkeypatch.setattr("app.services.document_service.parse_pdf_text", lambda path: ("PDF body text", {"extractor": "fake"}))
+    monkeypatch.setattr("app.services.document_service._summarize_text", lambda text, model: "summary result")
+    response = client.post(
+        "/invoke/upload",
+        data={"user_input": "总结这个文档"},
+        files={"file": ("sample.pdf", pdf_path.read_bytes(), "application/pdf")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["artifacts"]["document"]["summary"] == "summary result"
+
+
+def test_invoke_upload_rejects_unsupported_file_type() -> None:
+    response = client.post(
+        "/invoke/upload",
+        data={"user_input": "处理这个文档"},
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+    )
+    assert response.status_code == 400
 
 
 def test_invoke_chat_route_with_model_override(monkeypatch) -> None:
@@ -145,6 +227,14 @@ def test_invoke_rejects_openai_compatible_without_api_key() -> None:
     assert response.status_code == 422
 
 
+def test_app_retriever_uses_certifi_bundle() -> None:
+    from app.services.app_retriever import _build_ssl_context
+
+    context = _build_ssl_context()
+    assert context.get_ca_certs()
+    assert certifi.where().endswith("cacert.pem")
+
+
 def test_invoke_paper_route(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.paper_service.search_openalex",
@@ -166,7 +256,7 @@ def test_invoke_paper_route(monkeypatch) -> None:
     )
     get_graph.cache_clear()
 
-    response = client.post("/invoke", json={"user_input": "recommend one AI paper about agents"})
+    response = client.post("/invoke", json={"user_input": "推荐一篇关于 agents 的经典论文"})
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "paper"
@@ -195,11 +285,12 @@ def test_invoke_application_route(monkeypatch) -> None:
     )
     get_graph.cache_clear()
 
-    response = client.post("/invoke", json={"user_input": "recommend an AI application for writing"})
+    response = client.post("/invoke", json={"user_input": "推荐一个 AI 写作工具"})
     assert response.status_code == 200
     body = response.json()
     assert body["intent"] == "paper"
     assert body["artifacts"]["recommendation"]["kind"] == "application"
+    assert "写作工具" in body["artifacts"]["recommendation"]["query"]
     assert body["artifacts"]["links"][0]["url"] == "https://github.com/owner/tool"
 
 

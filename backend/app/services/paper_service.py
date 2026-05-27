@@ -76,7 +76,10 @@ def _build_query(user_input: str, topic: str, kind: str) -> str:
 
 def _infer_kind(user_input: str) -> str:
     lowered = user_input.lower()
-    if any(keyword in lowered for keyword in ("application", "applications", "app", "tool", "tools", "product")):
+    if any(
+        keyword in lowered
+        for keyword in ("application", "applications", "app", "tool", "tools", "product", "应用", "工具", "产品", "网站")
+    ):
         return "application"
     return "paper"
 
@@ -102,8 +105,22 @@ def _extract_keywords(user_input: str) -> list[str]:
         "about",
         "for",
         "of",
+        "推荐",
+        "一篇",
+        "一个",
+        "论文",
+        "文献",
+        "应用",
+        "工具",
+        "产品",
+        "网站",
+        "关于",
+        "经典",
     }
-    keywords = [word for word in user_input.lower().replace("/", " ").split() if word not in stopwords]
+    normalized = user_input.lower().replace("/", " ")
+    for phrase in ("推荐一个", "推荐一篇", "推荐一种", "找一个", "找一篇"):
+        normalized = normalized.replace(phrase, " ")
+    keywords = [word for word in normalized.split() if word not in stopwords]
     return keywords
 
 

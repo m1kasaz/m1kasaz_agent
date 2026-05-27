@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import ssl
 from typing import Any
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
+
+import certifi
 
 from app.config import get_settings
 from app.services.retrieval import RetrievalError, normalize_candidate
@@ -20,8 +23,9 @@ def search_applications(query: str, max_results: int = 5) -> list[dict[str, Any]
         },
     )
     timeout = get_settings().retrieval_timeout_seconds
+    ssl_context = _build_ssl_context()
     try:
-        with urlopen(request, timeout=timeout) as response:
+        with urlopen(request, timeout=timeout, context=ssl_context) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except Exception as exc:  # pragma: no cover - network failure path
         raise RetrievalError(f"Failed to query GitHub repositories: {exc}") from exc
@@ -53,3 +57,7 @@ def search_applications(query: str, max_results: int = 5) -> list[dict[str, Any]
     if not results:
         raise RetrievalError("No application results returned from GitHub")
     return results
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    return ssl.create_default_context(cafile=certifi.where())

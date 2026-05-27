@@ -1,11 +1,14 @@
+from pathlib import Path
 from zipfile import ZipFile
 
+import certifi
 from langchain_core.messages import AIMessage
 
 from app.agent.orchestrator import invoke_agent
 from app.graph.builder import get_graph, invoke_graph
 from app.services.llm.config import ModelOverride, resolve_model_config
 from app.nodes.router import route_intent
+from app.services.document_service import _infer_action, handle_document_request
 from app.services.storage import Storage
 
 
@@ -27,16 +30,24 @@ def test_route_intent_chat() -> None:
     assert route_intent("hello there") == "chat"
 
 
-def test_route_intent_document() -> None:
-    assert route_intent("summarize this pdf report.pdf") == "document"
+def test_route_intent_chat_without_recommendation_verb() -> None:
+    assert route_intent("我正在做一个 AI 写作工具") == "chat"
+
+
+def test_route_intent_document_with_path() -> None:
+    assert route_intent("总结 /tmp/report.pdf") == "document"
+
+
+def test_route_intent_document_with_keywords() -> None:
+    assert route_intent("请帮我提取这个文档的正文") == "document"
 
 
 def test_route_intent_paper() -> None:
-    assert route_intent("recommend one AI paper about agents") == "paper"
+    assert route_intent("推荐一篇关于 agents 的经典论文") == "paper"
 
 
 def test_route_intent_application() -> None:
-    assert route_intent("recommend an AI application for writing") == "paper"
+    assert route_intent("推荐一个 AI 写作工具") == "paper"
 
 
 def test_resolve_model_config_applies_override() -> None:
@@ -113,6 +124,35 @@ def test_graph_extracts_docx_text(tmp_path) -> None:
     assert result["artifacts"]["links"][0]["url"].startswith("/artifacts/")
 
 
+def test_handle_document_request_prefers_explicit_source_path(tmp_path) -> None:
+    docx_path = tmp_path / "sample.docx"
+    build_docx(docx_path)
+
+    response, artifacts = handle_document_request(
+        "提取这个文档",
+        source_path=docx_path,
+        source_name="uploaded.docx",
+        source_origin="uploaded",
+    )
+    assert "sample.docx" in response
+    assert artifacts["document"]["source"]["origin"] == "uploaded"
+    assert artifacts["document"]["source"]["name"] == "uploaded.docx"
+
+
+def test_infer_action_supports_chinese_prompts() -> None:
+    assert _infer_action("总结这个文档") == "summarize"
+    assert _infer_action("把这个文档转成 PDF") == "convert"
+    assert _infer_action("根据文档回答我的问题") == "qa"
+
+
+def test_paper_retriever_uses_certifi_bundle() -> None:
+    from app.services.paper_retriever import _build_ssl_context
+
+    context = _build_ssl_context()
+    assert context.get_ca_certs()
+    assert certifi.where().endswith("cacert.pem")
+
+
 def test_graph_recommends_paper_with_links(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.services.paper_service.search_openalex",
@@ -148,7 +188,7 @@ def test_orchestrator_keeps_auto_routing_behavior(monkeypatch) -> None:
     assert chat_result["intent"] == "chat"
     assert chat_result["response"] == "mocked reply"
 
-    document_result = invoke_agent("summarize this pdf report.pdf")
+    document_result = invoke_agent("总结 /tmp/report.pdf")
     assert document_result["intent"] == "document"
 
 
@@ -170,9 +210,10 @@ def test_orchestrator_preserves_public_paper_intent_for_applications(monkeypatch
         ],
     )
 
-    result = invoke_agent("recommend an AI application for writing")
+    result = invoke_agent("推荐一个 AI 写作工具")
     assert result["intent"] == "paper"
     assert result["artifacts"]["recommendation"]["kind"] == "application"
+    assert "写作工具" in result["artifacts"]["recommendation"]["query"]
 
 
 def test_storage_initializes_tables(tmp_path) -> None:

@@ -17,6 +17,10 @@ class LinkArtifact(BaseModel):
 class DocumentSource(BaseModel):
     path: str
     type: Literal["pdf", "docx"]
+    origin: Literal["local_path", "uploaded"] = "local_path"
+    name: str | None = None
+    url: str | None = None
+    download_url: str | None = None
 
 
 class DocumentOutput(BaseModel):
@@ -70,14 +74,18 @@ class RetrievalArtifact(BaseModel):
 
 class ModelSettingsUpdateRequest(BaseModel):
     api_key: str | None = None
+    base_url: str | None = None
     clear_api_key: bool = False
+    clear_base_url: bool = False
 
 
 class ModelProviderSettings(BaseModel):
-    provider: Literal["openai", "anthropic"]
+    provider: Literal["openai", "anthropic", "openai_compatible"]
     configured: bool
     source: Literal["env", "stored", "none"]
     masked_api_key: str | None = None
+    base_url: str | None = None
+    base_url_source: Literal["env", "stored", "none"] | None = None
 
 
 class ModelSettingsResponse(BaseModel):

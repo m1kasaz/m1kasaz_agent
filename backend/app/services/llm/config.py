@@ -69,11 +69,14 @@ def resolve_model_config(override: ModelOverride | dict[str, object] | None = No
 
 def _apply_stored_credentials(payload: dict[str, object], storage: Storage) -> dict[str, object]:
     provider = payload.get("provider")
-    if provider not in {"openai", "anthropic"}:
+    if provider not in {"openai", "anthropic", "openai_compatible"}:
         return payload
-    if payload.get("api_key"):
-        return payload
-    stored_api_key = storage.get_model_api_key(str(provider))
-    if stored_api_key:
-        payload["api_key"] = stored_api_key
+    if not payload.get("api_key"):
+        stored_api_key = storage.get_model_api_key(str(provider))
+        if stored_api_key:
+            payload["api_key"] = stored_api_key
+    if provider == "openai_compatible" and not payload.get("base_url"):
+        stored_base_url = storage.get_model_base_url(str(provider))
+        if stored_base_url:
+            payload["base_url"] = stored_base_url
     return payload

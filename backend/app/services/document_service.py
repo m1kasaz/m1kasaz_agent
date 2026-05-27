@@ -18,9 +18,15 @@ def handle_document_request(
     user_input: str,
     *,
     model_config: dict[str, object] | None = None,
+    source_path: Path | str | None = None,
+    source_name: str | None = None,
+    source_origin: str = "local_path",
 ) -> tuple[str, dict[str, Any]]:
-    source_path = _detect_source_path(user_input)
-    if source_path is None:
+    resolved_source = Path(source_path).expanduser() if source_path is not None else None
+    if resolved_source is None:
+        detected_source_path = _detect_source_path(user_input)
+        resolved_source = Path(detected_source_path).expanduser() if detected_source_path is not None else None
+    if resolved_source is None:
         return (
             "Please provide a local .pdf or .docx path for document processing.",
             {
@@ -33,11 +39,18 @@ def handle_document_request(
             },
         )
 
-    path = Path(source_path).expanduser()
+    path = resolved_source
     source_type = path.suffix.lower().lstrip(".")
     action = _infer_action(user_input)
     storage = Storage()
     artifact_service = ArtifactService()
+    source_details = _build_source_details(
+        path,
+        source_type=source_type,
+        source_origin=source_origin,
+        source_name=source_name,
+        artifact_service=artifact_service,
+    )
     artifact_id = uuid.uuid4().hex
 
     if not path.exists():
@@ -57,7 +70,7 @@ def handle_document_request(
                 "mode": "document",
                 "document": {
                     "action": action,
-                    "source": {"path": str(path), "type": source_type},
+                    "source": source_details,
                     "metadata": {"status": "error", "reason": "file_not_found"},
                 },
                 "links": [],
@@ -66,7 +79,7 @@ def handle_document_request(
 
     try:
         if action == "convert":
-            return _handle_convert(path, storage, artifact_service, artifact_id)
+            return _handle_convert(path, storage, artifact_service, artifact_id, source_details)
         return _handle_text_workflow(
             path,
             action=action,
@@ -75,6 +88,7 @@ def handle_document_request(
             artifact_id=artifact_id,
             model_config=model_config,
             user_input=user_input,
+            source_details=source_details,
         )
     except (DocumentParseError, DocumentConvertError, ValueError) as exc:
         storage.save_document_artifact(
@@ -93,7 +107,7 @@ def handle_document_request(
                 "mode": "document",
                 "document": {
                     "action": action,
-                    "source": {"path": str(path), "type": source_type},
+                    "source": source_details,
                     "metadata": {"status": "error", "reason": str(exc)},
                 },
                 "links": [],
@@ -106,6 +120,7 @@ def _handle_convert(
     storage: Storage,
     artifact_service: ArtifactService,
     artifact_id: str,
+    source_details: dict[str, object],
 ) -> tuple[str, dict[str, Any]]:
     if path.suffix.lower() != ".docx":
         raise ValueError("Only .docx files can be converted to pdf")
@@ -123,7 +138,7 @@ def _handle_convert(
     )
     document = DocumentArtifact(
         action="convert",
-        source={"path": str(path), "type": "docx"},
+        source=source_details,
         output=output,
         metadata={**metadata, "status": "success"},
     ).model_dump()
@@ -131,6 +146,10 @@ def _handle_convert(
         {"label": "open converted pdf", "url": output["url"], "role": "preview"},
         {"label": "download converted pdf", "url": output["download_url"], "role": "download"},
     ]
+    if source_details.get("url"):
+        links.append({"label": "open source file", "url": source_details["url"], "role": "source"})
+    if source_details.get("download_url"):
+        links.append({"label": "download source file", "url": source_details["download_url"], "role": "download"})
     return (
         f"Converted {path.name} to PDF successfully.",
         {"mode": "document", "document": document, "links": links},
@@ -146,6 +165,7 @@ def _handle_text_workflow(
     artifact_id: str,
     model_config: dict[str, object] | None,
     user_input: str,
+    source_details: dict[str, object],
 ) -> tuple[str, dict[str, Any]]:
     text, metadata = _extract_text(path)
     text_output = artifact_service.write_text(path, text)
@@ -169,7 +189,7 @@ def _handle_text_workflow(
     )
     document = DocumentArtifact(
         action=action,
-        source={"path": str(path), "type": path.suffix.lower().lstrip(".")},
+        source=source_details,
         output=text_output,
         text_preview=text[:500],
         summary=summary,
@@ -180,8 +200,10 @@ def _handle_text_workflow(
         {"label": "open extracted text", "url": text_output["url"], "role": "preview"},
         {"label": "download extracted text", "url": text_output["download_url"], "role": "download"},
     ]
-    if action == "summarize":
-        links.append({"label": "source file", "url": artifact_service.to_url(path) if path.parent == artifact_service.artifact_dir else text_output["url"], "role": "source"})
+    if source_details.get("url"):
+        links.append({"label": "open source file", "url": source_details["url"], "role": "source"})
+    if source_details.get("download_url"):
+        links.append({"label": "download source file", "url": source_details["download_url"], "role": "download"})
     return response, {"mode": "document", "document": document, "links": links}
 
 
@@ -228,13 +250,33 @@ def _detect_source_path(user_input: str) -> str | None:
 
 def _infer_action(user_input: str) -> str:
     lowered = user_input.lower()
-    if "question" in lowered or "qa" in lowered or "问" in lowered:
+    if any(keyword in lowered for keyword in ("question", "qa", "ask", "问", "回答", "问答")):
         return "qa"
-    if "summary" in lowered or "summarize" in lowered or "总结" in lowered:
+    if any(keyword in lowered for keyword in ("summary", "summarize", "概述", "总结")):
         return "summarize"
-    if "convert" in lowered or "转换" in lowered or "to pdf" in lowered:
+    if any(keyword in lowered for keyword in ("convert", "转换", "转成", "导出pdf", "to pdf")):
         return "convert"
     return "extract"
+
+
+def _build_source_details(
+    path: Path,
+    *,
+    source_type: str,
+    source_origin: str,
+    source_name: str | None,
+    artifact_service: ArtifactService,
+) -> dict[str, object]:
+    details: dict[str, object] = {
+        "path": str(path),
+        "type": source_type,
+        "origin": source_origin,
+        "name": source_name or path.name,
+    }
+    if path.exists() and path.parent == artifact_service.artifact_dir:
+        details["url"] = artifact_service.to_url(path)
+        details["download_url"] = artifact_service.to_download_url(path)
+    return details
 
 
 def _stringify_content(content: object) -> str:

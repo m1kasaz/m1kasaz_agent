@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 import uuid
 from pathlib import Path
 
@@ -24,6 +25,15 @@ class ArtifactService:
         output_path.write_text(content, encoding="utf-8")
         return self.describe(output_path)
 
+    def save_upload(self, original_name: str, content: bytes) -> dict[str, object]:
+        safe_name = _sanitize_filename(original_name)
+        suffix = Path(safe_name).suffix or ".bin"
+        stem = Path(safe_name).stem or "upload"
+        unique = uuid.uuid4().hex[:8]
+        output_path = self.artifact_dir / f"{stem}-{unique}{suffix}"
+        output_path.write_bytes(content)
+        return self.describe(output_path)
+
     def describe(self, file_path: Path) -> dict[str, object]:
         mime_type, _ = mimetypes.guess_type(file_path.name)
         return {
@@ -39,3 +49,9 @@ class ArtifactService:
 
     def to_download_url(self, file_path: Path) -> str:
         return f"{self.url_prefix}/download/{file_path.name}"
+
+
+def _sanitize_filename(filename: str) -> str:
+    cleaned = Path(filename or "upload").name
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", cleaned).strip(".-")
+    return cleaned or "upload"

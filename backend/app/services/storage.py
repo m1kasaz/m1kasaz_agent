@@ -123,14 +123,32 @@ class Storage:
         with self._connect() as connection:
             connection.execute("DELETE FROM user_preferences WHERE key = ?", (key,))
 
+    def get_model_provider_value(self, provider: str, field: str) -> str | None:
+        return self.get_preferences().get(f"model.{provider}.{field}")
+
+    def set_model_provider_value(self, provider: str, field: str, value: str) -> None:
+        self.set_preference(f"model.{provider}.{field}", value)
+
+    def clear_model_provider_value(self, provider: str, field: str) -> None:
+        self.delete_preference(f"model.{provider}.{field}")
+
     def get_model_api_key(self, provider: str) -> str | None:
-        return self.get_preferences().get(f"model.{provider}.api_key")
+        return self.get_model_provider_value(provider, "api_key")
 
     def set_model_api_key(self, provider: str, api_key: str) -> None:
-        self.set_preference(f"model.{provider}.api_key", api_key)
+        self.set_model_provider_value(provider, "api_key", api_key)
 
     def clear_model_api_key(self, provider: str) -> None:
-        self.delete_preference(f"model.{provider}.api_key")
+        self.clear_model_provider_value(provider, "api_key")
+
+    def get_model_base_url(self, provider: str) -> str | None:
+        return self.get_model_provider_value(provider, "base_url")
+
+    def set_model_base_url(self, provider: str, base_url: str) -> None:
+        self.set_model_provider_value(provider, "base_url", base_url)
+
+    def clear_model_base_url(self, provider: str) -> None:
+        self.clear_model_provider_value(provider, "base_url")
 
     def has_recommended(self, item_key: str) -> bool:
         with self._connect() as connection:
